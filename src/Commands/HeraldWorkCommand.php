@@ -6,6 +6,7 @@ use Assetplan\Herald\HeraldManager;
 use Assetplan\Herald\Message;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 
 class HeraldWorkCommand extends Command
 {
@@ -47,6 +48,12 @@ class HeraldWorkCommand extends Command
                 
                 $this->processMessage($message, $connection, $herald, $eventMappings);
                 
+            } catch (AMQPTimeoutException $e) {
+                // Timeouts are expected when no messages are available
+                // Only log in verbose mode
+                if ($this->output->isVeryVerbose()) {
+                    $this->line("Waiting for messages... (timeout)");
+                }
             } catch (\Throwable $e) {
                 $this->error("Error in consumer loop: {$e->getMessage()}");
                 sleep(1);
