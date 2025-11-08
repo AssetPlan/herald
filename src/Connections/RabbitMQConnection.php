@@ -11,6 +11,7 @@ class RabbitMQConnection implements ConnectionInterface
     private AMQPStreamConnection $connection;
     private $channel;
     private ?AMQPMessage $currentMessage = null;
+    private string $queueName;
     
     public function __construct(array $config)
     {
@@ -24,6 +25,9 @@ class RabbitMQConnection implements ConnectionInterface
         
         $this->channel = $this->connection->channel();
         
+        // Store queue name
+        $this->queueName = $config['queue'];
+        
         // Declare exchange (idempotent)
         $this->channel->exchange_declare(
             $config['exchange'],
@@ -35,7 +39,7 @@ class RabbitMQConnection implements ConnectionInterface
         
         // Declare queue with app-specific name
         $this->channel->queue_declare(
-            $config['queue'],
+            $this->queueName,
             false,  // passive
             $config['queue_durable'] ?? true,  // durable
             false,  // exclusive
@@ -43,7 +47,7 @@ class RabbitMQConnection implements ConnectionInterface
         );
         
         // Bind queue to exchange
-        $this->channel->queue_bind($config['queue'], $config['exchange']);
+        $this->channel->queue_bind($this->queueName, $config['exchange']);
         
         // Set up basic consume
         $this->channel->basic_qos(
@@ -118,8 +122,6 @@ class RabbitMQConnection implements ConnectionInterface
     
     private function getQueueName(): string
     {
-        // Store queue name during initialization
-        static $queueName;
-        return $queueName;
+        return $this->queueName;
     }
 }
