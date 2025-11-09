@@ -12,11 +12,13 @@ class RabbitMQConnection implements ConnectionInterface
 
     private $channel;
 
-    private ?AMQPMessage $currentMessage = null;
-
     private string $queueName;
 
     private array $config;
+
+    private ?AMQPMessage $currentMessage = null;
+
+    private bool $consumerRegistered = false;
 
     public function __construct(array $config)
     {
@@ -63,23 +65,26 @@ class RabbitMQConnection implements ConnectionInterface
 
     public function consume(): ?Message
     {
+        // Register consumer callback once
+        if (! $this->consumerRegistered) {
+            $this->channel->basic_consume(
+                $this->queueName,
+                '',     // consumer_tag (auto-generated)
+                false,  // no_local
+                false,  // no_ack (manual ack)
+                false,  // exclusive
+                false,  // nowait
+                function (AMQPMessage $msg) {
+                    $this->currentMessage = $msg;
+                }
+            );
+            $this->consumerRegistered = true;
+        }
+
+        // Reset current message
         $this->currentMessage = null;
 
-        $callback = function (AMQPMessage $msg) {
-            $this->currentMessage = $msg;
-        };
-
-        $this->channel->basic_consume(
-            $this->channel->queue_bind_ok ?? $this->getQueueName(),
-            '',     // consumer_tag
-            false,  // no_local
-            false,  // no_ack (manual ack)
-            false,  // exclusive
-            false,  // nowait
-            $callback
-        );
-
-        // Wait for one message with timeout
+        // Wait for one message with 1 second timeout
         $this->channel->wait(null, false, 1);
 
         if (! $this->currentMessage) {
