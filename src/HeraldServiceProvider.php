@@ -13,7 +13,7 @@ class HeraldServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/../config/herald.php',
+            __DIR__.'/../config/herald.php',
             'herald'
         );
 
@@ -31,7 +31,7 @@ class HeraldServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([
-                __DIR__ . '/../config/herald.php' => config_path('herald.php'),
+                __DIR__.'/../config/herald.php' => config_path('herald.php'),
             ], 'herald-config');
 
             $this->commands([

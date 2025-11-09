@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Assetplan\Herald\Connections\ConnectionInterface connection(?string $name = null)
  * @method static string|null getEventClass(string $type)
  * @method static array getEventsByTopic(string $topic)
+ * @method static void on(string $eventType, string|object|callable $handler)
+ * @method static array getHandlers(string $eventType)
+ * @method static array getRegisteredEventTypes()
+ * @method static void clearHandlers()
  *
  * @see \Assetplan\Herald\HeraldManager
  */
