@@ -11,14 +11,18 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * Queued handler example (implements ShouldQueue)
- * Use for heavy operations, API calls, or anything that takes time
+ * 
+ * Herald dispatches YOUR job directly - no wrapper, no magic.
+ * You get full control over queue settings, retries, backoff, etc.
+ * 
+ * Use for heavy operations, API calls, or anything that takes time.
  */
 class ProcessOrderPayment implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * Configure queue settings
+     * Configure queue settings - these are YOUR settings
      */
     public $queue = 'payments';
 
@@ -26,12 +30,23 @@ class ProcessOrderPayment implements ShouldQueue
 
     public $backoff = [60, 120, 300]; // Retry after 1min, 2min, 5min
 
-    public function handle(Message $message): void
-    {
-        $orderId = $message->payload['order_id'];
-        $amount = $message->payload['amount'];
+    /**
+     * Queued handlers receive the Message in the constructor
+     * Herald will call: ProcessOrderPayment::dispatch($message)
+     */
+    public function __construct(
+        public readonly Message $message
+    ) {}
 
-        // Heavy operation - will be queued automatically
+    /**
+     * Handle the job when it's processed from the queue
+     */
+    public function handle(): void
+    {
+        $orderId = $this->message->payload['order_id'];
+        $amount = $this->message->payload['amount'];
+
+        // Heavy operation - will be queued automatically by Herald
         $this->processPayment($orderId, $amount);
     }
 

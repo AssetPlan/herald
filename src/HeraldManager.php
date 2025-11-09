@@ -50,35 +50,7 @@ class HeraldManager
         };
     }
 
-    public function getEventClass(string $type): ?string
-    {
-        $events = $this->config['events'] ?? [];
 
-        foreach ($events as $group => $mappings) {
-            if (isset($mappings[$type])) {
-                return $mappings[$type];
-            }
-        }
-
-        return null;
-    }
-
-    public function getEventsByTopic(string $topic): array
-    {
-        $events = $this->config['events'] ?? [];
-
-        if ($topic === '*') {
-            // Return all event mappings
-            $all = [];
-            foreach ($events as $mappings) {
-                $all = array_merge($all, $mappings);
-            }
-
-            return $all;
-        }
-
-        return $events[$topic] ?? [];
-    }
 
     /**
      * Register a handler for a specific event type.

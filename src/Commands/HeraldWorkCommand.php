@@ -5,7 +5,6 @@ namespace Assetplan\Herald\Commands;
 use Assetplan\Herald\HeraldManager;
 use Assetplan\Herald\Message;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Event;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 
 class HeraldWorkCommand extends Command
@@ -28,12 +27,9 @@ class HeraldWorkCommand extends Command
         // Get registered event types from Herald::on() calls
         $registeredTypes = $herald->getRegisteredEventTypes();
 
-        // Also get legacy config-based event mappings for backward compatibility
-        $eventMappings = $herald->getEventsByTopic($topic);
-
-        if (empty($registeredTypes) && empty($eventMappings)) {
+        if (empty($registeredTypes)) {
             $this->error("No handlers registered for topic: {$topic}");
-            $this->comment('Use Herald::on() to register handlers or configure events in config/herald.php');
+            $this->comment('Use Herald::on() to register handlers in your service provider');
 
             return self::FAILURE;
         }
@@ -52,7 +48,7 @@ class HeraldWorkCommand extends Command
                     continue;
                 }
 
-                $this->processMessage($message, $connection, $herald, $eventMappings);
+                $this->processMessage($message, $connection, $herald);
 
             } catch (AMQPTimeoutException $e) {
                 // Timeouts are expected when no messages are available
@@ -75,44 +71,22 @@ class HeraldWorkCommand extends Command
     private function processMessage(
         Message $message,
         $connection,
-        HeraldManager $herald,
-        array $eventMappings
+        HeraldManager $herald
     ): void {
         try {
             $this->line("Received message: {$message->type}");
 
-            // Check for Herald::on() registered handlers first
             $handlers = $herald->getHandlers($message->type);
 
-            if (! empty($handlers)) {
-                $connection->ack($message);
-                $this->executeHandlers($handlers, $message);
-
-                return;
-            }
-
-            // Fallback to legacy config-based event dispatching
-            if (! isset($eventMappings[$message->type])) {
+            if (empty($handlers)) {
                 $this->comment("Skipping message type: {$message->type} (no handlers registered)");
                 $connection->ack($message);
 
                 return;
             }
 
-            $eventClass = $eventMappings[$message->type];
-
-            if (! class_exists($eventClass)) {
-                $this->warn("Event class does not exist: {$eventClass}");
-                $connection->ack($message);
-
-                return;
-            }
-
             $connection->ack($message);
-
-            Event::dispatch(new $eventClass($message->payload));
-
-            $this->info("Dispatched event: {$eventClass}");
+            $this->executeHandlers($handlers, $message);
 
         } catch (\Throwable $e) {
             $this->error("Error processing message: {$e->getMessage()}");
@@ -140,7 +114,7 @@ class HeraldWorkCommand extends Command
             return;
         }
 
-        // Handle class strings - resolve and check for ShouldQueue
+        // Handle class strings
         if (is_string($handler)) {
             if (! class_exists($handler)) {
                 $this->warn("Handler class does not exist: {$handler}");
@@ -151,34 +125,43 @@ class HeraldWorkCommand extends Command
             // Check if handler implements ShouldQueue
             $reflection = new \ReflectionClass($handler);
             if ($reflection->implementsInterface(\Illuminate\Contracts\Queue\ShouldQueue::class)) {
-                // Queue the handler
-                dispatch(new \Assetplan\Herald\Jobs\HandleHeraldMessage($handler, $message));
-                $this->info("Queued handler: {$handler} for: {$message->type}");
+                // Dispatch the handler job itself with the message
+                // The handler receives the Message in its constructor
+                $handler::dispatch($message);
+                $this->info("Dispatched queued handler: {$handler} for: {$message->type}");
 
                 return;
             }
 
-            // Execute synchronously
+            // Execute synchronously - call handle() method
             $instance = app($handler);
-            $instance->handle($message);
-            $this->info("Executed handler: {$handler} for: {$message->type}");
+            if (method_exists($instance, 'handle')) {
+                $instance->handle($message);
+                $this->info("Executed handler: {$handler} for: {$message->type}");
+            } else {
+                $this->warn("Handler {$handler} does not have a handle() method");
+            }
 
             return;
         }
 
-        // Handle object instances - check for ShouldQueue
+        // Handle object instances
         if (is_object($handler)) {
             if ($handler instanceof \Illuminate\Contracts\Queue\ShouldQueue) {
-                // Queue the handler instance
-                dispatch(new \Assetplan\Herald\Jobs\HandleHeraldMessage($handler, $message));
-                $this->info('Queued handler instance: '.get_class($handler)." for: {$message->type}");
+                // Cannot dispatch pre-instantiated handlers - they should be class strings
+                $this->warn('Queued handlers must be registered as class strings, not instances: '.get_class($handler));
+                $this->comment('Use Herald::on("event.type", HandlerClass::class) instead of new HandlerClass()');
 
                 return;
             }
 
-            // Execute synchronously
-            $handler->handle($message);
-            $this->info('Executed handler instance: '.get_class($handler)." for: {$message->type}");
+            // Execute synchronously - call handle() method
+            if (method_exists($handler, 'handle')) {
+                $handler->handle($message);
+                $this->info('Executed handler instance: '.get_class($handler)." for: {$message->type}");
+            } else {
+                $this->warn('Handler instance '.get_class($handler).' does not have a handle() method');
+            }
 
             return;
         }

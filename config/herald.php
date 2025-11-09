@@ -34,7 +34,7 @@ return [
             'vhost' => env('RABBITMQ_VHOST', '/'),
             'exchange' => env('RABBITMQ_EXCHANGE', 'herald-events'),
             'exchange_type' => 'fanout',
-            'queue' => env('RABBITMQ_QUEUE', env('APP_NAME', 'laravel').'-queue'),
+            'queue' => env('RABBITMQ_QUEUE', env('APP_NAME', 'laravel') . '-queue'),
             'queue_durable' => true,
         ],
 
@@ -46,30 +46,6 @@ return [
             'consumer_name' => env('REDIS_CONSUMER_NAME', gethostname()),
         ],
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Event Mappings
-    |--------------------------------------------------------------------------
-    |
-    | Map message types to Laravel event classes. Messages are grouped by
-    | topic for easier filtering. Use the topic name when running the
-    | herald:work command to process specific event types.
-    |
-    | Example: php artisan herald:work user
-    |
-    */
-
-    'events' => [
-        'user' => [
-            // 'user.created' => App\Events\UserCreated::class,
-            // 'user.updated' => App\Events\UserUpdated::class,
-            // 'user.deleted' => App\Events\UserDeleted::class,
-        ],
-
-        'order' => [
-            // 'order.created' => App\Events\OrderCreated::class,
-            // 'order.updated' => App\Events\OrderUpdated::class,
-        ],
-    ],
 ];
+
+

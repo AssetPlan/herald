@@ -22,10 +22,6 @@ class HeraldServiceProvider extends ServiceProvider
         // USER EVENTS
         // ============================================
         
-        // When a user registers in the legacy CakePHP app,
-        // dispatch a Laravel event to handle welcome email, profile creation, etc.
-        Herald::on('user.registered', \App\Events\UserRegistered::class);
-        
         // Quick logging for user logouts (sync - fast operation)
         Herald::on('user.logout', function (Message $msg) {
             Log::info("User logged out", [
@@ -36,6 +32,20 @@ class HeraldServiceProvider extends ServiceProvider
         
         // Profile updates trigger cache invalidation (sync - immediate)
         Herald::on('user.profile.updated', \App\Services\CacheInvalidator::class);
+        
+        // ============================================
+        // LEGACY JOB ADAPTER PATTERN
+        // ============================================
+        
+        // Got existing Laravel jobs that don't know about Herald Messages?
+        // Use a closure adapter - it makes the boundary crystal clear!
+        Herald::on('user.registered', function (Message $msg) {
+            \App\Jobs\SendWelcomeEmail::dispatch(
+                userId: $msg->payload['user_id'],
+                email: $msg->payload['email'],
+                name: $msg->payload['name']
+            );
+        });
         
         
         // ============================================

@@ -36,14 +36,5 @@ class TestCase extends Orchestra
             'consumer_group' => 'test-group',
             'consumer_name' => 'test-consumer',
         ]);
-        $app['config']->set('herald.events', [
-            'user' => [
-                'user.created' => \Assetplan\Herald\Tests\Fixtures\UserCreatedEvent::class,
-                'user.updated' => \Assetplan\Herald\Tests\Fixtures\UserUpdatedEvent::class,
-            ],
-            'order' => [
-                'order.created' => \Assetplan\Herald\Tests\Fixtures\OrderCreatedEvent::class,
-            ],
-        ]);
     }
 }
