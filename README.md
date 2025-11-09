@@ -8,10 +8,11 @@ Herald enables pub-sub messaging between distributed applications. Publish event
 
 - **Multiple Drivers**: RabbitMQ and Redis Streams support out of the box
 - **Topic-Based Filtering**: Process only the events you care about
+- **Handler Registration**: Simple `Herald::on()` API for mapping message types to handlers
+- **Flexible Handler Types**: Queued jobs, sync handlers, closures, or object instances
 - **Idempotent Processing**: Automatic acknowledgment with error handling
-- **Event Mapping**: Map message types to Laravel event classes
 - **Signal Handling**: Graceful shutdown on SIGTERM/SIGINT
-- **Queue Integration**: Events dispatched to Laravel's queue system (Horizon compatible)
+- **Queue Integration**: Handlers dispatched to Laravel's queue system (Horizon compatible)
 
 ## Requirements
 
@@ -27,19 +28,40 @@ Install via Composer:
 composer require assetplan/herald
 ```
 
-Publish the configuration file:
+**That's it!** Herald automatically registers via Laravel package discovery.
+
+### Setting Up Handler Registration
+
+Run the install command to publish a dedicated service provider for registering your message handlers:
+
+```bash
+php artisan herald:install
+```
+
+This creates `app/Providers/HeraldServiceProvider.php` where you can register your handlers. Add it to your `config/app.php`:
+
+```php
+'providers' => [
+    // ...
+    App\Providers\HeraldServiceProvider::class,
+],
+```
+
+**Note:** If you're using Laravel 11+ with automatic provider discovery, the provider will be automatically registered.
+
+### Optional: Customize Connection Settings
+
+If you need to customize connection settings beyond environment variables, you can optionally publish the configuration file:
 
 ```bash
 php artisan vendor:publish --tag=herald-config
 ```
 
-This creates `config/herald.php` where you can configure connections and event mappings.
+**Most users won't need to publish the config.** Just set your environment variables and you're good to go.
 
 ## Configuration
 
-### Environment Variables
-
-Add these to your `.env` file:
+Herald uses environment variables for configuration. Add these to your `.env` file:
 
 **For RabbitMQ:**
 ```env
@@ -64,39 +86,48 @@ REDIS_CONSUMER_NAME=worker-1
 
 ### Registering Handlers
 
-Register handlers for message types in your `AppServiceProvider` or a dedicated `HeraldServiceProvider`:
+After running `php artisan herald:install`, register handlers in `app/Providers/HeraldServiceProvider.php`:
 
 ```php
 use Assetplan\Herald\Facades\Herald;
 use Assetplan\Herald\Message;
 
-class AppServiceProvider extends ServiceProvider
+class HeraldServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Dispatch to Laravel event
-        Herald::on('user.registered', \App\Events\UserRegistered::class);
-        
-        // Queue a job (automatically queued if it implements ShouldQueue)
+        // Queued job (automatically queued if it implements ShouldQueue)
         Herald::on('order.created', \App\Jobs\ProcessOrder::class);
         
-        // Inline closure for quick operations (always runs synchronously)
+        // Sync handler (executes immediately)
+        Herald::on('cache.invalidate', \App\Handlers\CacheInvalidator::class);
+        
+        // Closure for quick operations (always runs synchronously)
         Herald::on('user.logout', fn (Message $msg) => Log::info("User logged out: {$msg->id}"));
         
         // Multiple handlers for the same event
         Herald::on('payment.received', \App\Jobs\SendReceipt::class);
         Herald::on('payment.received', \App\Jobs\UpdateInventory::class);
+        
+        // Legacy job adapter - bridge to existing jobs
+        Herald::on('user.registered', function (Message $msg) {
+            \App\Jobs\SendWelcomeEmail::dispatch(
+                userId: $msg->payload['user_id'],
+                email: $msg->payload['email']
+            );
+        });
     }
 }
 ```
 
+**Tip:** The published service provider includes detailed examples and documentation for all handler types.
+
 **Handler Types:**
 
-1. **Laravel Events** - Dispatched through Laravel's event system
-2. **Job Classes** - Automatically queued if they implement `ShouldQueue`
-3. **Service Classes** - Any class with a `handle(Message $message)` method
-4. **Closures** - For quick, inline operations (always synchronous)
-5. **Pre-configured Instances** - Pass configured objects directly
+1. **Queued Jobs** - Implement `ShouldQueue`, dispatched with YOUR queue settings
+2. **Sync Handlers** - Classes with `handle(Message $message)` method
+3. **Closures** - For quick operations or adapting legacy jobs
+4. **Pre-configured Instances** - Pass configured objects directly
 
 ```php
 // Pre-configured instance example
@@ -105,21 +136,6 @@ $emailSender = new \App\Services\EmailSender(
 );
 Herald::on('email.send', $emailSender);
 ```
-
-### Legacy: Config-Based Event Mappings
-
-You can also configure event mappings in `config/herald.php` (for backward compatibility):
-
-```php
-'events' => [
-    'user' => [
-        'user.created' => App\Events\UserCreated::class,
-        'user.updated' => App\Events\UserUpdated::class,
-    ],
-],
-```
-
-**Note:** `Herald::on()` registrations take priority over config-based mappings.
 
 ## Usage
 
@@ -144,8 +160,8 @@ php artisan herald:work user --connection=redis
 The worker will:
 1. Connect to your message broker (RabbitMQ/Redis)
 2. Consume messages matching your topic filter
-3. Map message types to Laravel event classes
-4. Dispatch the events (which can be queued via Horizon)
+3. Execute registered handlers for each message type
+4. Dispatch queued handlers to Laravel's queue system (Horizon compatible)
 5. Acknowledge successful processing
 
 ### Creating Handlers
@@ -474,27 +490,30 @@ Herald expects messages in this JSON format:
 ```
 
 - **id**: Unique identifier for the message (for deduplication/logging)
-- **type**: Event type that maps to your Laravel event class
-- **payload**: Arbitrary data passed to the Laravel event constructor
+- **type**: Message type that maps to your registered handlers (e.g., 'user.created', 'order.shipped')
+- **payload**: Arbitrary data passed to your handlers (accessible via `$message->payload`)
 
 ## How It Works
 
 1. **Publisher** (any app) sends a JSON message to RabbitMQ/Redis
-2. **Herald Worker** consumes the message
-3. **Handler Lookup** finds registered handlers for the message type
-4. **Smart Execution**:
-   - Closures execute immediately (sync)
-   - Classes without `ShouldQueue` execute immediately (sync)
-   - Classes with `ShouldQueue` are dispatched to Laravel's queue system (async)
-5. **Message Acknowledgment** marks the message as processed
+2. **Herald Worker** (`herald:work`) consumes the message
+3. **Handler Lookup** finds registered handlers via `Herald::on()` for the message type
+4. **Smart Dispatch**:
+   - **Closures**: Execute immediately (sync) - perfect for quick operations
+   - **Sync Handlers**: Classes without `ShouldQueue` execute immediately (sync)
+   - **Queued Handlers**: Classes with `ShouldQueue` are dispatched directly as `YourJob::dispatch($message)` (async)
+5. **Message Acknowledgment** marks the message as processed in the broker
 
 ### Why Herald?
 
-- **Low surface area** - One method: `Herald::on()`
-- **Zero opinions** - Use events, jobs, closures, or custom classes
-- **Laravel-native** - Respects `ShouldQueue`, integrates with Horizon
-- **Flexible** - Handle messages however you want
-- **Simple** - "We just let you know when something happens"
+- **Low surface area** - One registration method: `Herald::on()`
+- **Zero opinions** - Use jobs, closures, events, or any handler pattern you prefer
+- **Laravel-native** - Your queued jobs dispatch with YOUR settings (queue name, retries, backoff, etc.)
+- **No magic** - Queued handlers dispatch as `YourJob::dispatch($message)` - that's it
+- **No wrapper jobs** - Your job appears in Horizon logs as itself, not wrapped
+- **Works out of the box** - Config publishing is completely optional
+- **Flexible** - Handle messages however you want: sync, async, or mixed
+- **Simple contract** - Herald delivers `Message`, you decide what to do with it
 
 ## Deployment
 
