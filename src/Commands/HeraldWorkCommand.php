@@ -46,37 +46,25 @@ class HeraldWorkCommand extends Command
 
         $this->info('Listening for messages...');
 
-        // Use startConsuming if available (RabbitMQ), otherwise fall back to polling
-        if (method_exists($connection, 'startConsuming')) {
+        // Simple polling loop
+        while (! $this->shouldQuit) {
             try {
-                $connection->startConsuming(function (Message $message) use ($connection, $herald) {
-                    $this->processMessage($message, $connection, $herald);
-                });
-            } catch (\Throwable $e) {
-                $this->error("Consumer error: {$e->getMessage()}");
-                $connection->close();
-                return self::FAILURE;
-            }
-        } else {
-            // Fallback to polling for other connection types
-            while (! $this->shouldQuit) {
-                try {
-                    $message = $connection->consume();
+                $message = $connection->consume();
 
-                    if (! $message) {
-                        continue;
-                    }
-
-                    $this->processMessage($message, $connection, $herald);
-
-                } catch (AMQPTimeoutException $e) {
-                    if ($this->output->isVeryVerbose()) {
-                        $this->line('Waiting for messages... (timeout)');
-                    }
-                } catch (\Throwable $e) {
-                    $this->error("Error in consumer loop: {$e->getMessage()}");
-                    sleep(1);
+                if (! $message) {
+                    usleep(100000); // 100ms
+                    continue;
                 }
+
+                $this->processMessage($message, $connection, $herald);
+
+            } catch (AMQPTimeoutException $e) {
+                if ($this->output->isVeryVerbose()) {
+                    $this->line('Waiting for messages... (timeout)');
+                }
+            } catch (\Throwable $e) {
+                $this->error("Error in consumer loop: {$e->getMessage()}");
+                sleep(1);
             }
         }
 
