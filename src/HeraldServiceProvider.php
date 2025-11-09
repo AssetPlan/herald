@@ -30,12 +30,15 @@ class HeraldServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
+            // Publish config (optional - most users won't need this)
             $this->publishes([
                 __DIR__.'/../config/herald.php' => config_path('herald.php'),
             ], 'herald-config');
 
+            // Register console commands
             $this->commands([
                 HeraldWorkCommand::class,
+                Commands\InstallCommand::class,
             ]);
         }
     }
