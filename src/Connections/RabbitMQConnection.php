@@ -59,6 +59,41 @@ class RabbitMQConnection implements ConnectionInterface
         );
     }
 
+    /**
+     * Start consuming messages with a callback (blocking infinite loop).
+     * 
+     * @param callable $callback Function that receives Message objects
+     * @throws \Throwable
+     */
+    public function startConsuming(callable $callback): void
+    {
+        $this->channel->basic_consume(
+            $this->queueName,
+            '',     // consumer_tag
+            false,  // no_local
+            false,  // no_ack (manual ack required)
+            false,  // exclusive
+            false,  // nowait
+            function (AMQPMessage $msg) use ($callback) {
+                $data = json_decode($msg->getBody(), true);
+
+                if (isset($data['type']) && isset($data['payload'])) {
+                    $message = new Message(
+                        id: $msg->getDeliveryTag(),
+                        type: $data['type'],
+                        payload: $data['payload'],
+                        raw: $msg
+                    );
+                    
+                    $callback($message);
+                }
+            }
+        );
+
+        // Blocking infinite loop - processes messages continuously
+        $this->channel->consume();
+    }
+
     public function consume(): ?Message
     {
         // Simple polling - just get one message

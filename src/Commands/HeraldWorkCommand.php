@@ -46,25 +46,37 @@ class HeraldWorkCommand extends Command
 
         $this->info('Listening for messages...');
 
-        while (! $this->shouldQuit) {
+        // Use startConsuming if available (RabbitMQ), otherwise fall back to polling
+        if (method_exists($connection, 'startConsuming')) {
             try {
-                $message = $connection->consume();
-
-                if (! $message) {
-                    continue;
-                }
-
-                $this->processMessage($message, $connection, $herald);
-
-            } catch (AMQPTimeoutException $e) {
-                // Timeouts are expected when no messages are available
-                // Only log in verbose mode
-                if ($this->output->isVeryVerbose()) {
-                    $this->line('Waiting for messages... (timeout)');
-                }
+                $connection->startConsuming(function (Message $message) use ($connection, $herald) {
+                    $this->processMessage($message, $connection, $herald);
+                });
             } catch (\Throwable $e) {
-                $this->error("Error in consumer loop: {$e->getMessage()}");
-                sleep(1);
+                $this->error("Consumer error: {$e->getMessage()}");
+                $connection->close();
+                return self::FAILURE;
+            }
+        } else {
+            // Fallback to polling for other connection types
+            while (! $this->shouldQuit) {
+                try {
+                    $message = $connection->consume();
+
+                    if (! $message) {
+                        continue;
+                    }
+
+                    $this->processMessage($message, $connection, $herald);
+
+                } catch (AMQPTimeoutException $e) {
+                    if ($this->output->isVeryVerbose()) {
+                        $this->line('Waiting for messages... (timeout)');
+                    }
+                } catch (\Throwable $e) {
+                    $this->error("Error in consumer loop: {$e->getMessage()}");
+                    sleep(1);
+                }
             }
         }
 
