@@ -90,4 +90,17 @@ class HeraldManager
     {
         static::$handlers = [];
     }
+
+    /**
+     * Publish a message to the broker.
+     *
+     * @param  string  $type  The event type (used as routing key)
+     * @param  array  $payload  The message payload
+     * @param  string|null  $id  Optional message ID (auto-generated if not provided)
+     * @param  string|null  $connection  Optional connection name (uses default if not provided)
+     */
+    public function publish(string $type, array $payload, ?string $id = null, ?string $connection = null): void
+    {
+        $this->connection($connection)->publish($type, $payload, $id);
+    }
 }

@@ -168,7 +168,7 @@ Herald uses RabbitMQ's topic exchange for efficient message routing:
 - `*.created` - All creation events (`user.created`, `order.created`, `product.created`)
 - `user.*.verified` - Events like `user.email.verified`, `user.phone.verified`
 - `order.#` - All order-related events, including nested ones
-- `*` - All events (not recommended for production)
+- `#` - All events
 
 The worker will:
 1. Connect to RabbitMQ
@@ -287,44 +287,30 @@ Herald::on('user.logout', fn (Message $msg) => Log::info("User {$msg->payload['u
 
 ### Publishing Messages from Laravel
 
-While Herald is primarily a consumer package, you can publish messages directly to the broker.
-
-**Important:** When publishing to RabbitMQ, always use the event type as the routing key (third parameter). This enables efficient broker-level routing so consumers only receive events they're subscribed to.
-
-**RabbitMQ Example:**
+Herald provides a simple `publish()` method for sending messages:
 
 ```php
-use PhpAmqpLib\Connection\AMQPStreamConnection;
-use PhpAmqpLib\Message\AMQPMessage;
+use Assetplan\Herald\Facades\Herald;
 
-$connection = new AMQPStreamConnection(
-    config('herald.connections.rabbitmq.host'),
-    config('herald.connections.rabbitmq.port'),
-    config('herald.connections.rabbitmq.user'),
-    config('herald.connections.rabbitmq.password'),
-    config('herald.connections.rabbitmq.vhost')
-);
+// Simple publish
+Herald::publish('user.created', [
+    'user_id' => 123,
+    'email' => 'user@example.com',
+]);
 
-$channel = $connection->channel();
+// Publish with custom message ID
+Herald::publish('order.completed', [
+    'order_id' => 456,
+    'total' => 99.99,
+], id: 'custom-id-123');
 
-$message = new AMQPMessage(json_encode([
-    'id' => uniqid(),
-    'type' => 'user.created',
-    'payload' => [
-        'user_id' => 123,
-        'email' => 'user@example.com',
-    ],
-]));
-
-$channel->basic_publish(
-    $message,
-    config('herald.connections.rabbitmq.exchange'),
-    'user.created'  // Routing key (event type)
-);
-
-$channel->close();
-$connection->close();
+// Publish to specific connection
+Herald::publish('index.rebuild', [
+    'entity_id' => 789,
+], connection: 'rabbitmq');
 ```
+
+The routing key (first parameter) is used for topic-based routing, allowing consumers to subscribe to specific event patterns.
 
 ### Publishing from Legacy PHP Applications
 
@@ -399,15 +385,18 @@ class UsersController extends AppController
                 'password' => 'guest',
                 'vhost' => '/',
                 'exchange' => 'herald-events'
-));
+            ));
 
-$herald->publish('user.created', array(
-    'user_id' => $user['User']['id'],
-    'email' => $user['User']['email'],
-    'created_at' => $user['User']['created']
-));
+            $herald->publish('user.created', array(
+                'user_id' => $user['User']['id'],
+                'email' => $user['User']['email'],
+                'created_at' => $user['User']['created']
+            ));
 
             $herald->close();
+        }
+    }
+}
 ```
 
 ## Message Format

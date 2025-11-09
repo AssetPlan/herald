@@ -12,5 +12,7 @@ interface ConnectionInterface
 
     public function nack(Message $message, bool $requeue = false): void;
 
+    public function publish(string $type, array $payload, ?string $id = null): void;
+
     public function close(): void;
 }

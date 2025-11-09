@@ -128,6 +128,26 @@ class RabbitMQConnection implements ConnectionInterface
         );
     }
 
+    public function publish(string $type, array $payload, ?string $id = null): void
+    {
+        $message = json_encode([
+            'id' => $id ?? uniqid('herald_', true),
+            'type' => $type,
+            'payload' => $payload,
+        ]);
+
+        $amqpMessage = new AMQPMessage($message, [
+            'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+        ]);
+
+        // Use event type as routing key for topic-based routing
+        $this->channel->basic_publish(
+            $amqpMessage,
+            $this->config['exchange'],
+            $type  // routing key
+        );
+    }
+
     public function close(): void
     {
         $this->channel->close();

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static array getHandlers(string $eventType)
  * @method static array getRegisteredEventTypes()
  * @method static void clearHandlers()
+ * @method static void publish(string $type, array $payload, ?string $id = null, ?string $connection = null)
  *
  * @see \Assetplan\Herald\HeraldManager
  */
