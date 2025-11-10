@@ -209,37 +209,46 @@ Register it:
 Herald::on('user.activity', LogUserActivity::class);
 ```
 
-#### 2. Queued Handler (Heavy Operations)
+#### 2. Laravel Job (Heavy Operations)
 
-For time-consuming operations, API calls, or database-intensive work:
+For time-consuming operations, API calls, or database-intensive work, use a standard Laravel Job:
 
 ```php
-namespace App\Herald\Handlers;
+namespace App\Jobs;
 
 use Assetplan\Herald\Message;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class ProcessOrderPayment implements ShouldQueue
 {
-    use Queueable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $queue = 'payments';
     public $tries = 3;
     public $backoff = [60, 120, 300];
 
-    public function handle(Message $message): void
+    public function __construct(public Message $message)
+    {
+    }
+
+    public function handle(): void
     {
         // Heavy operation - automatically queued
-        $this->chargeCustomer($message->payload);
+        $this->chargeCustomer($this->message->payload);
     }
 }
 ```
 
-Register it (automatically queued because of `ShouldQueue`):
+Register it (automatically queued because it implements `ShouldQueue`):
 ```php
 Herald::on('order.created', ProcessOrderPayment::class);
 ```
+
+**Note:** When using a Laravel Job as a Herald handler, your `__construct()` method should receive the `public Message $message` parameter. Herald will instantiate the job with the message and dispatch it to your queue.
 
 #### 3. Laravel Event Handler
 
