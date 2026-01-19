@@ -96,22 +96,26 @@ class HeraldWorkCommand extends Command
                 return;
             }
 
-            $connection->ack($message);
+            // Execute handlers FIRST, then ACK only on success
+            // This ensures messages are not lost if handlers fail
             $this->executeHandlers($handlers, $message);
+
+            // ACK after successful handler execution
+            $connection->ack($message);
 
         } catch (\Throwable $e) {
             $this->error("Error processing message: {$e->getMessage()}");
+
+            // NACK with requeue - message goes back to queue for retry
+            $connection->nack($message, requeue: true);
         }
     }
 
     private function executeHandlers(array $handlers, Message $message): void
     {
         foreach ($handlers as $handler) {
-            try {
-                $this->executeHandler($handler, $message);
-            } catch (\Throwable $e) {
-                $this->error("Error executing handler: {$e->getMessage()}");
-            }
+            // Let exceptions propagate so processMessage can NACK and requeue
+            $this->executeHandler($handler, $message);
         }
     }
 
