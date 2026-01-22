@@ -120,7 +120,7 @@ class HeraldManager
     public function fake(): void
     {
         $this->isFaking = true;
-        $this->fakeConnection = new FakeConnection();
+        $this->fakeConnection = new FakeConnection;
     }
 
     /**
