@@ -3,6 +3,7 @@
 namespace Assetplan\Herald\Commands;
 
 use Assetplan\Herald\HeraldManager;
+use Assetplan\Herald\Jobs\HeraldClosureHandlerJob;
 use Assetplan\Herald\Message;
 use Illuminate\Console\Command;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
@@ -83,31 +84,30 @@ class HeraldWorkCommand extends Command
         $connection,
         HeraldManager $herald
     ): void {
+        $this->line("Received message: {$message->type} (ID: {$message->id})");
+        $this->output->write('', false); // Force flush
+
+        // ACK immediately and delegate handling to the consumer application
         try {
-            $this->line("Received message: {$message->type} (ID: {$message->id})");
-            $this->output->write('', false); // Force flush
-
-            $handlers = $herald->getHandlers($message->type);
-
-            if (empty($handlers)) {
-                $this->comment("Skipping message type: {$message->type} (no handlers registered)");
-                $connection->ack($message);
-
-                return;
-            }
-
-            // Execute handlers FIRST, then ACK only on success
-            // This ensures messages are not lost if handlers fail
-            $this->executeHandlers($handlers, $message);
-
-            // ACK after successful handler execution
             $connection->ack($message);
-
         } catch (\Throwable $e) {
-            $this->error("Error processing message: {$e->getMessage()}");
+            $this->error("Error acknowledging message {$message->type} (ID: {$message->id}): {$e->getMessage()}");
 
-            // NACK with requeue - message goes back to queue for retry
-            $connection->nack($message, requeue: true);
+            return;
+        }
+
+        $handlers = $herald->getHandlers($message->type);
+
+        if (empty($handlers)) {
+            $this->comment("Skipping message type: {$message->type} (no handlers registered)");
+
+            return;
+        }
+
+        try {
+            $this->executeHandlers($handlers, $message);
+        } catch (\Throwable $e) {
+            $this->error("Error executing handlers for {$message->type} (ID: {$message->id}): {$e->getMessage()}");
         }
     }
 
@@ -121,10 +121,10 @@ class HeraldWorkCommand extends Command
 
     private function executeHandler(string|object|callable $handler, Message $message): void
     {
-        // Handle closures - always execute synchronously
+        // Handle closures - dispatch as a queued job
         if ($handler instanceof \Closure) {
-            $handler($message);
-            $this->info("Executed closure handler for: {$message->type} (ID: {$message->id})");
+            HeraldClosureHandlerJob::dispatch($handler, $message);
+            $this->info("Dispatched closure handler job for: {$message->type} (ID: {$message->id})");
             $this->output->write('', false); // Force flush
 
             return;

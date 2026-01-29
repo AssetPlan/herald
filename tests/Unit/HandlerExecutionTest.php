@@ -3,6 +3,7 @@
 namespace Assetplan\Herald\Tests\Unit;
 
 use Assetplan\Herald\Facades\Herald;
+use Assetplan\Herald\Jobs\HeraldClosureHandlerJob;
 use Assetplan\Herald\Message;
 use Assetplan\Herald\Tests\Fixtures\QueuedHandler;
 use Assetplan\Herald\Tests\Fixtures\SyncHandler;
@@ -87,7 +88,7 @@ class HandlerExecutionTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_closure_handler_is_executed_synchronously(): void
+    public function test_closure_handler_is_dispatched_as_job(): void
     {
         $executed = false;
 
@@ -110,13 +111,18 @@ class HandlerExecutionTest extends TestCase
         $handler = $handlers[0];
         $this->assertInstanceOf(\Closure::class, $handler);
 
-        // Execute the closure
-        $handler($message);
+        // Dispatch the closure handler job
+        HeraldClosureHandlerJob::dispatch($handler, $message);
 
-        $this->assertTrue($executed);
+        // Verify job was queued and executes correctly
+        Queue::assertPushed(HeraldClosureHandlerJob::class, function ($job) use ($message, &$executed) {
+            $job->handle();
 
-        // Verify no jobs were queued
-        Queue::assertNothingPushed();
+            return $job->message->id === $message->id &&
+                   $job->message->type === $message->type &&
+                   $job->message->payload === $message->payload &&
+                   $executed === true;
+        });
     }
 
     public function test_queued_handler_preserves_message_data(): void

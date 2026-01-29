@@ -22,7 +22,7 @@ class HeraldServiceProvider extends ServiceProvider
         // USER EVENTS
         // ============================================
 
-        // Quick logging for user logouts (sync - fast operation)
+        // Quick logging for user logouts (queued via closure wrapper)
         Herald::on('user.logout', function (Message $msg) {
             Log::info('User logged out', [
                 'user_id' => $msg->payload['user_id'],
