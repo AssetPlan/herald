@@ -8,16 +8,16 @@ All notable changes to `herald` will be documented in this file.
 - **`Herald::on()` API** - Flexible handler registration with minimal surface area
   - Support for class strings (resolved from container)
   - Support for object instances (pre-configured handlers)
-  - Support for closures (always synchronous)
+  - Support for closures (queued via Herald wrapper job)
   - Multiple handlers per event type
 - **Smart queue detection** - Automatically queues handlers implementing `ShouldQueue`
-- **`HandleHeraldMessage` job** - Queue wrapper for async handler execution
+- **`HeraldClosureHandlerJob` job** - Queue wrapper for closure handler execution
 - Initial release
 - RabbitMQ connection driver with automatic exchange/queue setup
 - Herald worker command (`herald:work`) with topic filtering
 - Event mapping configuration (message types → Laravel events)
 - Signal handling for graceful shutdown (SIGTERM/SIGINT)
-- Idempotent message processing with ack/nack support
+- Immediate acknowledgment with handler errors delegated to the app
 - Comprehensive test suite (21 tests, 48 assertions)
 - Full documentation with PHP 5.6+ publisher examples
 

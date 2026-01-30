@@ -10,7 +10,7 @@ Herald enables pub-sub messaging between distributed applications. Publish event
 - **Efficient Message Filtering**: Broker-level routing ensures consumers only receive relevant events
 - **Handler Registration**: Simple `Herald::on()` API for mapping message types to handlers
 - **Flexible Handler Types**: Queued jobs, sync handlers, closures, or object instances
-- **Idempotent Processing**: Automatic acknowledgment with error handling
+- **Idempotent Processing**: Immediate acknowledgment with handler errors delegated to the app
 - **Signal Handling**: Graceful shutdown on SIGTERM/SIGINT
 - **Queue Integration**: Handlers dispatched to Laravel's queue system (Horizon compatible)
 
@@ -94,7 +94,7 @@ class HeraldServiceProvider extends ServiceProvider
         // Sync handler (executes immediately)
         Herald::on('cache.invalidate', \App\Handlers\CacheInvalidator::class);
         
-        // Closure for quick operations (always runs synchronously)
+        // Closure (queued via Herald wrapper job)
         Herald::on('user.logout', fn (Message $msg) => Log::info("User logged out: {$msg->id}"));
         
         // Multiple handlers for the same event
@@ -118,7 +118,7 @@ class HeraldServiceProvider extends ServiceProvider
 
 1. **Queued Jobs** - Implement `ShouldQueue`, dispatched with YOUR queue settings
 2. **Sync Handlers** - Classes with `handle(Message $message)` method
-3. **Closures** - For quick operations or adapting legacy jobs
+3. **Closures** - Queued via Herald wrapper job (serializable only)
 4. **Pre-configured Instances** - Pass configured objects directly
 
 ```php
@@ -175,7 +175,7 @@ The worker will:
 2. Subscribe only to messages matching your topic pattern
 3. Execute registered handlers for each message type
 4. Dispatch queued handlers to Laravel's queue system (Horizon compatible)
-5. Acknowledge successful processing
+5. Acknowledge receipt immediately
 
 ### Creating Handlers
 
@@ -285,7 +285,7 @@ Herald::on('user.registered', UserRegistered::class);
 
 #### 4. Closure Handler (Prototyping/Simple Logic)
 
-For quick operations or prototyping (always runs synchronously):
+Closures are queued via a Herald wrapper job (must be serializable):
 
 ```php
 Herald::on('cache.clear', fn (Message $msg) => Cache::forget($msg->payload['key']));
@@ -433,10 +433,10 @@ Herald expects messages in this JSON format:
 2. **Herald Worker** (`herald:work`) consumes the message
 3. **Handler Lookup** finds registered handlers via `Herald::on()` for the message type
 4. **Smart Dispatch**:
-   - **Closures**: Execute immediately (sync) - perfect for quick operations
+   - **Closures**: Dispatched via Herald wrapper job (async)
    - **Sync Handlers**: Classes without `ShouldQueue` execute immediately (sync)
    - **Queued Handlers**: Classes with `ShouldQueue` are dispatched directly as `YourJob::dispatch($message)` (async)
-5. **Message Acknowledgment** marks the message as processed in the broker
+5. **Message Acknowledgment** happens immediately on receipt
 
 ### Why Herald?
 
@@ -444,7 +444,7 @@ Herald expects messages in this JSON format:
 - **Zero opinions** - Use jobs, closures, events, or any handler pattern you prefer
 - **Laravel-native** - Your queued jobs dispatch with YOUR settings (queue name, retries, backoff, etc.)
 - **No magic** - Queued handlers dispatch as `YourJob::dispatch($message)` - that's it
-- **No wrapper jobs** - Your job appears in Horizon logs as itself, not wrapped
+- **No wrapper jobs for class handlers** - ShouldQueue handlers dispatch as themselves; closures use a small wrapper job
 - **Works out of the box** - Config publishing is completely optional
 - **Flexible** - Handle messages however you want: sync, async, or mixed
 - **Simple contract** - Herald delivers `Message`, you decide what to do with it
@@ -511,7 +511,7 @@ Herald::on('event.type', HandlerClass::class);
 // Object instance (pre-configured)
 Herald::on('event.type', new Handler($config));
 
-// Closure (always sync)
+// Closure (queued via Herald wrapper job)
 Herald::on('event.type', fn (Message $msg) => /* ... */);
 
 // Multiple handlers
@@ -523,10 +523,10 @@ Herald::on('event.type', SecondHandler::class);
 
 | Handler Type | Implements `ShouldQueue` | Execution |
 |-------------|-------------------------|-----------|
-| Closure | N/A | Always synchronous |
+| Closure | N/A | Queued via Herald wrapper job |
 | Class | ✅ Yes | Queued (async) |
 | Class | ❌ No | Synchronous |
-| Object instance | ✅ Yes | Queued (async) |
+| Object instance | ✅ Yes | Not supported (warns, skipped) |
 | Object instance | ❌ No | Synchronous |
 
 ### Message Object

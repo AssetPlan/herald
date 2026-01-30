@@ -6,7 +6,7 @@
  * This file demonstrates the three main patterns for handling Herald messages:
  * 1. Queued handlers (ShouldQueue) - Herald dispatches YOUR job
  * 2. Sync handlers (handle method) - Fast, immediate execution
- * 3. Closures - Inline logic or adapter pattern for legacy jobs
+ * 3. Closures - Queued via Herald wrapper job
  */
 
 namespace App\Providers;
@@ -72,10 +72,10 @@ class HeraldServiceProvider extends ServiceProvider
          */
 
         // ============================================
-        // PATTERN 3: CLOSURES
+        // PATTERN 3: CLOSURES (QUEUED)
         // ============================================
 
-        // A) Inline Logic - Simple operations
+        // A) Inline Logic - Queued and executed off the worker
         Herald::on('metrics.track', function (Message $msg) {
             \Illuminate\Support\Facades\Log::info('Metric tracked', [
                 'metric' => $msg->payload['name'],
@@ -96,7 +96,7 @@ class HeraldServiceProvider extends ServiceProvider
 
         // C) Multiple actions for one event
         Herald::on('order.cancelled', function (Message $msg) {
-            // Immediate cache cleanup
+            // Cache cleanup (queued)
             cache()->forget("order.{$msg->payload['order_id']}");
 
             // Then dispatch heavy operations
@@ -129,8 +129,8 @@ class HeraldServiceProvider extends ServiceProvider
          *    - middleware
          *    Herald doesn't interfere.
          *
-         * 5. No Double-Wrapping
-         *    Herald dispatches YOUR job directly, not a wrapper job.
+         * 5. No Double-Wrapping for Jobs
+         *    Herald dispatches YOUR job directly (closures use a small wrapper job).
          *    Your job shows up in Horizon/queue logs as itself.
          */
     }

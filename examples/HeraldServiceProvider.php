@@ -17,7 +17,7 @@ class HeraldServiceProvider extends ServiceProvider
         // Example 2: Queue a job (implements ShouldQueue)
         Herald::on('order.created', \App\Jobs\ProcessOrder::class);
 
-        // Example 3: Inline closure for simple operations (always sync)
+        // Example 3: Inline closure (queued via Herald wrapper job)
         Herald::on('user.logout', fn (Message $msg) => Log::info("User logged out: {$msg->id}"));
 
         // Example 4: Pre-configured handler instance
